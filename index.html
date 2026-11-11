@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dosificadora de Botellas · HMI Factory I/O</title>
+<style>
+  :root{
+    --bg:#0f1418; --panel:#161d23; --panel2:#1c252c; --line:#2a3640; --txt:#d9e2e8; --mut:#8496a3;
+    --on:#3ddc84; --off:#33414b; --warn:#ffb020; --err:#ff4d4f; --acc:#4fb3ff; --liq:#2f8fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px;background:#0b1013;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  header h1{font-size:16px;margin:0 12px 0 0;font-weight:650;letter-spacing:.2px}
+  header h1 small{color:var(--mut);font-weight:400}
+  .grow{flex:1}
+  select,input,button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+  input[type=number]{width:72px}
+  button{cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  .pill{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--off)}
+  .pill.ok{background:#1f5c3a;color:#bff5d4}.pill.bad{background:#5c1f22;color:#ffd0d1}.pill.sim{background:#24405c;color:#cfe6ff}
+  main{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(300px,1fr);gap:12px;padding:12px}
+  @media (max-width:980px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 10px;font-weight:650}
+  .col{display:flex;flex-direction:column;gap:12px}
+  svg{width:100%;height:auto;display:block}
+  .btns{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .btns button{padding:12px 6px;font-weight:700;border-radius:8px}
+  .b-start{background:#1d5a37;border-color:#2b8a53}.b-stop{background:#4a3f17;border-color:#8a7526}
+  .b-reset{background:#1f3a55;border-color:#2f5f8a}.b-em{background:#6a1b1e;border-color:#b0282d}
+  .step{margin-top:10px;padding:10px;border-radius:8px;background:var(--panel2);font-weight:650}
+  .step.alarm{background:#4a1416;color:#ffd0d1}
+  .warnline{color:var(--warn);min-height:1.2em;margin-top:6px;font-size:13px}
+  .stages{display:flex;gap:4px;margin-top:8px}
+  .stages div{flex:1;text-align:center;font-size:11px;padding:5px 2px;border-radius:5px;background:var(--off);color:var(--mut)}
+  .stages div.act{background:var(--acc);color:#04121f;font-weight:700}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+  .stat{background:var(--panel2);border-radius:6px;padding:6px 8px}
+  .stat b{display:block;font-size:18px}
+  .stat span{color:var(--mut);font-size:11px}
+  table{width:100%;border-collapse:collapse}
+  td{padding:4px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
+  td.k{font-family:ui-monospace,Consolas,monospace;font-weight:700;width:34px}
+  td.d{color:var(--mut);font-size:12.5px}
+  .led{width:13px;height:13px;border-radius:50%;background:var(--off);display:inline-block;box-shadow:inset 0 0 0 1px #0006}
+  .led.on{background:var(--on);box-shadow:0 0 8px var(--on)}
+  tr.click{cursor:pointer}tr.click:hover{background:var(--panel2)}
+  .params{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;font-size:13px}
+  .tools{display:flex;flex-wrap:wrap;gap:6px}
+  .tools button{font-size:12.5px}
+  #log{height:180px;overflow:auto;font:12px/1.45 ui-monospace,Consolas,monospace;background:#0b1013;border-radius:6px;padding:6px 8px}
+  #log .w{color:var(--warn)}#log .e{color:var(--err)}#log .o{color:var(--on)}
+  details summary{cursor:pointer;color:var(--acc)}
+  .map input{width:100%}
+  .help{font-size:13px;color:var(--mut)}.help code{color:var(--txt);background:#0b1013;padding:1px 5px;border-radius:4px}
+  .help ol{padding-left:18px;margin:6px 0}
+  /* SVG */
+  .lbl{fill:var(--mut);font-size:12px}
+  .tagtxt{font:700 11px ui-monospace,Consolas,monospace;fill:var(--mut)}
+  .tagtxt.on{fill:var(--on)}
+  .sens{fill:var(--off);stroke:#0008}
+  .sens.on{fill:var(--on)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dosificadora de Botellas <small>· HMI / PLC virtual para Factory I/O</small></h1>
+  <label>Modo
+    <select id="mode">
+      <option value="sim">Simulación local</option>
+      <option value="fio">Factory I/O (Web API)</option>
+    </select>
+  </label>
+  <input id="url" size="24" title="URL del servidor web de Factory I/O">
+  <button id="btnConn">Conectar</button>
+  <span id="status" class="pill sim">SIMULACIÓN</span>
+  <span class="grow"></span>
+  <label title="En reposo, permite activar salidas a mano tocando la tabla de salidas"><input type="checkbox" id="manual"> Modo manual</label>
+</header>
+
+<main>
+  <div class="col">
+    <section class="card">
+      <h2>Mímico de la máquina</h2>
+      <svg id="mimic" viewBox="0 0 1000 440" aria-label="Diagrama de la dosificadora"></svg>
+    </section>
+
+    <section class="card">
+      <h2>Registro de eventos</h2>
+      <div id="log"></div>
+    </section>
+
+    <section class="card help">
+      <h2>Cómo conectar con Factory I/O</h2>
+      <ol>
+        <li>Requiere Factory I/O <b>Ultimate Edition</b>. En la consola de Factory I/O (tecla <code>\</code>) escribe <code>app.web_server = True</code>. El servidor queda en <code>http://localhost:7410</code>.</li>
+        <li>En <i>Drivers</i> deja <b>None</b>: si hay un driver activo, éste sobreescribe lo que escribe la API.</li>
+        <li>Arma tu escena con los sensores y actuadores, y nombra sus tags igual que en la tabla <i>Mapeo de tags</i> de abajo (o edita la tabla con tus nombres).</li>
+        <li>Si el navegador bloquea la conexión (error de CORS), ejecuta <code>node proxy.js</code> en la misma carpeta y abre <code>http://localhost:8080</code>.</li>
+        <li>Pon Factory I/O en <b>Play</b>, elige el modo <i>Factory I/O</i>, presiona <b>Conectar</b> y luego <b>INICIO</b>.</li>
+      </ol>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Mando</h2>
+      <div class="btns">
+        <button class="b-start" id="bStart">INICIO</button>
+        <button class="b-stop" id="bStop">PARADA</button>
+        <button class="b-reset" id="bReset">RESET</button>
+        <button class="b-em" id="bEm">EMERG.</button>
+      </div>
+      <div id="step" class="step">Detenido</div>
+      <div class="stages" id="stages">
+        <div>1 Verif.</div><div>2 Ingreso</div><div>3 Giro</div><div>4 Dosif.</div><div>5 Salida</div>
+      </div>
+      <div class="warnline" id="warn"></div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="card">
+      <h2>Entradas (sensores → PLC)</h2>
+      <table id="tIn"></table>
+      <h2 style="margin-top:14px">Salidas (PLC → actuadores)</h2>
+      <table id="tOut"></table>
+    </section>
+
+    <section class="card">
+      <h2>Parámetros</h2>
+      <div class="params" id="params"></div>
+    </section>
+
+    <section class="card" id="simCard">
+      <h2>Simulación: planta y fallas</h2>
+      <div class="tools">
+        <button id="tAddStar">Botella olvidada en estrella</button>
+        <button id="tRefill">Rellenar estanque</button>
+        <button id="tBottles">Reponer 8 botellas</button>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tCont" checked> Alimentación continua (botellas sin fin)</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tGaps" checked> Llegada al azar (huecos entre botellas)</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tCap"> Falla sensor capacitivo (X2)</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tAutoTank"> Rellenar estanque automáticamente</label>
+      </div>
+    </section>
+
+    <section class="card map">
+      <details>
+        <summary>Mapeo de tags de Factory I/O</summary>
+        <p class="help">Nombres exactos de los tags en tu escena. Se guardan en este navegador.</p>
+        <table id="tMap"></table>
+        <button id="bSaveMap" style="margin-top:8px">Guardar mapeo</button>
+      </details>
+    </section>
+  </div>
+</main>
+
+<script>
+/* ===================== Definición de E/S (según PDF) ===================== */
+const IN = [
+  {k:'X0', d:'Sensor posición de rotación (inductivo)', tag:'Sensor posicion estrella'},
+  {k:'X1', d:'Sensor biela saca botella',               tag:'Sensor biela salida'},
+  {k:'X2', d:'Sensor botella llena (capacitivo)',       tag:'Sensor botella llena'},
+  {k:'X3', d:'Limit switch botella para llenado',       tag:'LS botella llenado'},
+  {k:'X4', d:'Limit switch botella en posición de entrada', tag:'LS botella entrada'},
+  {k:'X5', d:'Sensor biela de ingreso de botella',      tag:'Sensor biela ingreso'},
+  {k:'X6', d:'Nivel máximo de estanque',                tag:'Nivel maximo'},
+  {k:'X7', d:'Nivel mínimo de estanque',                tag:'Nivel minimo'},
+];
+const OUT = [
+  {k:'Y0', d:'Motor del plato (estrella)',  tag:'Motor plato'},
+  {k:'Y1', d:'Motor biela saca botella',    tag:'Motor biela salida'},
+  {k:'Y2', d:'Motor cinta de entrada',      tag:'Cinta entrada'},
+  {k:'Y3', d:'Motor biela de ingreso',      tag:'Motor biela ingreso'},
+  {k:'Y4', d:'Motor cinta de salida',       tag:'Cinta salida'},
+  {k:'Y5', d:'Bomba de agua',               tag:'Bomba'},
+  {k:'Y6', d:'Electroválvula',              tag:'Electrovalvula'},
+];
+const X = {}, Y = {}, manualOut = {};
+IN.forEach(i => X[i.k] = false);
+OUT.forEach(o => { Y[o.k] = false; manualOut[o.k] = false; });
+
+/* Parámetros */
+const P = {
+  nPos: 8,        // posiciones de la estrella
+  fillStation: 2, // posiciones desde ingreso hasta llenado
+  exitSteps: 3,   // contador: llenado -> salida (según PDF)
+  tFillMax: 7,    // s, temporizador de seguridad de llenado
+  tExitConv: 4,   // s, tiempo de marcha de cinta de salida
+  tWait: 5,       // s, espera de botella antes de girar igual
+  tNoBottles: 20, // s, sin botellas y estrella vacía -> parada automática
+  tCrankMax: 5,   // s, ciclo máximo de biela
+  tRotMax: 4,     // s, máximo entre pulsos de X0
+};
+const P_TXT = {
+  nPos:'Posiciones de la estrella', fillStation:'Pos. ingreso → llenado', exitSteps:'Pos. llenado → salida (contador)',
+  tFillMax:'T. máx. llenado [s]', tExitConv:'T. cinta de salida [s]', tWait:'Espera botella antes de girar [s]', tNoBottles:'Sin botellas → parada auto [s]',
+  tCrankMax:'T. máx. ciclo biela [s]', tRotMax:'T. máx. entre pulsos X0 [s]',
+};
+
+/* Persistencia ligera */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('dosif.'+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('dosif.'+k, JSON.stringify(v)); }catch(e){} },
+};
+{ const sp = store.get('params', {}); Object.keys(P).forEach(k => { if (sp[k] > 0) P[k] = sp[k]; }); }
+const savedMap = store.get('map', {});
+[...IN, ...OUT].forEach(t => { if (savedMap[t.k]) t.tag = savedMap[t.k]; });
+
+const $ = s => document.querySelector(s);
+const now = () => performance.now();
+const mod = (a, n) => ((a % n) + n) % n;
+
+/* ===================== Registro ===================== */
+function log(msg, cls=''){
+  const el = $('#log'), t = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.className = cls; div.textContent = `[${t}] ${msg}`;
+  el.prepend(div);
+  while (el.childNodes.length > 150) el.removeChild(el.lastChild);
+}
+
+/* ===================== PLC virtual (secuencia del PDF) ===================== */
+const STEP_TXT = {
+  IDLE:'Detenido — presione INICIO',
+  VERIF_ROT:'1 · Verificación: girando estrella',
+  VERIF_CHK:'1 · Verificación: revisando posición',
+  VERIF_EJECT:'1 · Verificación: expulsando botella residual',
+  STATION:'Parada: ingreso + dosificación + salida en paralelo',
+  INDEX:'3 · Plato avanza una posición',
+  ALARM:'ALARMA',
+};
+function activeStages(){
+  const st = plc.step, T = plc.T || {};
+  if (st.startsWith('VERIF')) return [0];
+  if (st === 'INDEX') return [2];
+  if (st !== 'STATION' || !T.started) return [];
+  const a = [];
+  if (!T.inDone) a.push(1);
+  if (!T.fillDone) a.push(3);
+  if (!T.outDone) a.push(4);
+  return a;
+}
+
+const plc = {
+  step:'IDLE', sub:0, t0:now(), tEdge:now(), prev:{...X}, run:false, stopReq:false, alarm:null, warn:'',
+  reg:[], vSteps:0, rot:0, acc:0, exitConvUntil:0,
+  okFill:0, toFill:0, purged:0, cycles:0, loaded:0, holes:0, T:{},
+};
+const F_ = () => mod(P.fillStation, P.nPos);
+const E_ = () => mod(P.fillStation + P.exitSteps, P.nPos);
+
+function enter(s){ plc.step = s; plc.sub = 0; plc.t0 = now(); plc.tEdge = now(); }
+function el(){ return (now() - plc.t0) / 1000; }
+function rise(k){ return X[k] && !plc.prev[k]; }
+function alarm(msg){
+  if (plc.step === 'ALARM') return;
+  plc.alarm = msg; plc.run = false; plc.stopReq = false; plc.exitConvUntil = 0;
+  enter('ALARM'); log('ALARMA: ' + msg, 'e');
+}
+function stopDone(){ plc.run = false; plc.stopReq = false; enter('IDLE'); log('Máquina detenida al fin de ciclo'); }
+
+/* Ciclo de biela: arranca, espera salir de reposo y luego volver a reposo */
+function crank(o, y, x, done){
+  o[y] = true;
+  if (plc.sub === 0){ if (!X[x]) plc.sub = 1; }
+  else if (X[x]){ o[y] = false; done(); return; }
+  if (el() > P.tCrankMax) alarm(`La biela (${y}) no volvió a reposo (${x})`);
+}
+
+function enterStation(){
+  enter('STATION');
+  plc.T = {started:false, in:0, inDone:false, inRes:'', fill:0, fillDone:false, fillRes:'', outDone:false, outRes:''};
+}
+/* Biela con su propio sub-estado (para trabajar en paralelo con otras tareas) */
+function crankT(o, y, x, T, key, done){
+  o[y] = true;
+  if (T[key+'T'] === undefined) T[key+'T'] = now();
+  if (!T[key+'S']){ if (!X[x]) T[key+'S'] = 1; }
+  else if (X[x]){ o[y] = false; done(); return; }
+  if (now() - T[key+'T'] > P.tCrankMax*1000) alarm(`La biela (${y}) no volvió a reposo (${x})`);
+}
+
+function scan(dt){
+  const o = {Y0:false,Y1:false,Y2:false,Y3:false,Y4:false,Y5:false,Y6:false};
+  const N = P.nPos, F = F_(), E = E_();
+  plc.warn = '';
+
+  switch (plc.step){
+    case 'IDLE': case 'ALARM': break;
+
+    /* ---- Etapa 1: verificación / vaciado de la estrella ---- */
+    case 'VERIF_ROT':
+      o.Y0 = true;
+      if (rise('X0')) enter('VERIF_CHK');
+      else if (now() - plc.tEdge > P.tRotMax*1000) alarm('La estrella no entrega pulsos de posición (X0)');
+      break;
+    case 'VERIF_CHK':
+      if (el() >= 0.3){
+        plc.reg.unshift(plc.reg.pop());  // registro de desplazamiento: cada bolsillo avanza una estación
+        plc.reg[F] = X.X3;               // lectura real en zona de llenado
+        plc.vSteps++;
+        if (plc.reg[E]){ log('Botella residual en salida → expulsando', 'w'); enter('VERIF_EJECT'); }
+        else if (plc.vSteps >= N + P.exitSteps && !plc.reg.some(Boolean)){ log('Estrella vacía ✓ — comienza operación en carrusel', 'o'); enterStation(); }
+        else enter('VERIF_ROT');
+      }
+      break;
+    case 'VERIF_EJECT':
+      crank(o, 'Y1', 'X1', () => {
+        plc.reg[E] = false; plc.purged++;
+        plc.exitConvUntil = now() + P.tExitConv*1000;
+        enter('VERIF_ROT');
+      });
+      break;
+
+    /* ---- Modo carrusel: en cada parada se hace ingreso + dosificación + salida en paralelo ---- */
+    case 'STATION': {
+      const T = plc.T;
+      if (el() < 0.3) break;                       // asentamiento tras el giro
+      if (!T.started){
+        T.started = true; T.tOut = now();
+        if (plc.reg[F] && !X.X3) log('Atención: se esperaba botella en llenado y X3 no la detecta', 'w');
+        plc.reg[F] = X.X3;                           // el sensor manda sobre el registro
+        T.fill = X.X3 ? 1 : 0; T.fillDone = !X.X3; T.fillT = now(); T.acc = 0;
+        T.outDone = !plc.reg[E];
+        T.tIn = now();
+      }
+      const starHas = plc.reg.some(Boolean);
+
+      // a) INGRESO: cinta hasta X4 y biela; si no llega botella en tWait s, se sigue igual
+      if (!T.inDone){
+        if (T.in === 0){
+          if (plc.stopReq || plc.reg[0]){ T.inDone = true; T.inRes = plc.stopReq ? 'parada' : 'ocupada'; }
+          else if (X.X4){ T.in = 1; T.inT = now(); }
+          else {
+            o.Y2 = true;
+            if ((now() - T.tIn)/1000 > P.tWait){
+              if (starHas){ T.inDone = true; T.inRes = 'sin botella'; plc.holes++; log(`Sin botella en ${P.tWait} s: el plato avanza y queda un bolsillo vacío`); }
+              else if ((now() - T.tIn)/1000 > P.tNoBottles){
+                log(`No llegan botellas hace ${P.tNoBottles} s y la estrella está vacía: máquina detenida`, 'w');
+                stopDone(); break;
+              }
+              else plc.warn = 'Esperando botellas en la cinta de entrada (X4)…';
+            }
+          }
+        } else {
+          crankT(o, 'Y3', 'X5', T, 'in', () => { plc.reg[0] = true; T.inDone = true; T.inRes = 'cargada ✓'; plc.loaded++; });
+        }
+      }
+
+      // b) DOSIFICACIÓN: válvula, luego bomba; corte por X2 o temporizador
+      if (!T.fillDone){
+        if (!X.X7){
+          plc.warn = '⚠ Estanque bajo nivel mínimo (X7): bomba bloqueada, máquina en espera hasta rellenar';
+          if (!plc.lowLogged){ plc.lowLogged = true; log('Estanque bajo nivel mínimo (X7): se detiene la bomba para que no trabaje en seco. Esperando relleno…', 'e'); }
+        }
+        else {
+          if (plc.lowLogged){ plc.lowLogged = false; log('Nivel recuperado: se reanuda la dosificación', 'o'); }
+          o.Y6 = true;
+          if (now() - T.fillT >= 300){
+            o.Y5 = true; T.acc += dt;
+            if (X.X2){ o.Y5 = o.Y6 = false; T.fillDone = true; T.fillRes = 'llena ✓'; plc.okFill++;
+                       log(`Botella llena por sensor capacitivo (${T.acc.toFixed(1)} s)`, 'o'); }
+            else if (T.acc >= P.tFillMax){ o.Y5 = o.Y6 = false; T.fillDone = true; T.fillRes = 'por tiempo'; plc.toFill++;
+                       log('Llenado cortado por TEMPORIZADOR — revisar sensor capacitivo X2', 'w'); }
+          }
+        }
+      }
+
+      // c) SALIDA: si el registro indica botella en la estación de salida, biela + cinta temporizada
+      if (!T.outDone){
+        crankT(o, 'Y1', 'X1', T, 'out', () => {
+          plc.reg[E] = false; T.outDone = true; T.outRes = 'despachada ✓'; plc.cycles++;
+          plc.exitConvUntil = now() + P.tExitConv*1000;
+        });
+      }
+
+      if (plc.step === 'STATION' && T.inDone && T.fillDone && T.outDone){
+        if (plc.stopReq && !plc.reg.some(Boolean)) stopDone();
+        else enter('INDEX');
+      }
+      break;
+    }
+    case 'INDEX':
+      o.Y0 = true;
+      if (rise('X0')){
+        o.Y0 = false;
+        plc.reg.unshift(plc.reg.pop());               // cada botella avanza una estación
+        enterStation();
+      } else if (now() - plc.tEdge > P.tRotMax*1000) alarm('La estrella no entrega pulsos de posición (X0)');
+      break;
+  }
+
+  if (plc.step !== 'ALARM' && now() < plc.exitConvUntil) o.Y4 = true;
+  if (plc.step === 'ALARM') Object.keys(o).forEach(k => o[k] = false);
+  if ($('#manual').checked && plc.step === 'IDLE') Object.assign(o, manualOut);
+  if (plc.step !== 'IDLE' && plc.step !== 'ALARM' && !X.X6 && !X.X7 && !plc.warn) plc.warn = 'Estanque bajo nivel mínimo';
+
+  Object.assign(Y, o);
+  plc.prev = {...X};
+}
+
+/* Mandos */
+function cmdStart(){
+  if (plc.step === 'ALARM'){ log('Hay una alarma activa: presione RESET', 'w'); return; }
+  if (plc.step !== 'IDLE'){ plc.stopReq = false; return; }
+  if ($('#mode').value === 'fio' && !fio.connected){ log('Primero conecte con Factory I/O', 'w'); return; }
+  plc.run = true; plc.stopReq = false;
+  plc.reg = Array(P.nPos).fill(false); plc.reg[F_()] = X.X3; plc.vSteps = 0;
+  plc.prev = {...X};
+  log('INICIO — verificación de botellas en la estrella', 'o');
+  enter('VERIF_ROT');
+}
+function cmdStop(){ if (plc.run){ plc.stopReq = true; log('Parada solicitada: no entran más botellas, se vacía la estrella'); } }
+function cmdReset(){ if (plc.step === 'ALARM'){ plc.alarm = null; enter('IDLE'); log('Alarma reconocida'); } }
+function cmdEm(){ alarm('Parada de emergencia'); }
+
+/* ===================== Planta simulada (modo local) ===================== */
+const S = {
+  angle:0, slots:Array(8).fill(null), inConv:[], outConv:[], queue:8,
+  crankIn:0, crankOut:0, tank:0.85, faultCap:false, continuous:true, randomGaps:true, dist:9, nextGap:0.16, holes:0, autoTank:false, lowLogged:false,
+  ok:0, bad:0, dropped:0, spill:0, spillLogged:false,
+};
+function step(){ return 360 / P.nPos; }
+function phase(){ return (S.angle % step()) / step(); }
+function slotAt(st){
+  const ph = phase();
+  if (ph > 0.12 && ph < 0.88) return -1;
+  return mod(st - Math.round(S.angle / step()), P.nPos);
+}
+function resizeSlots(){
+  if (S.slots.length !== P.nPos) S.slots = Array(P.nPos).fill(null);
+}
+function crankMove(key, on, dt, atMid){
+  if (!on) return;
+  const a0 = S[key]; S[key] += 240*dt;
+  if (a0 < 180 && S[key] >= 180) atMid();
+  if (S[key] >= 360) S[key] -= 360;
+}
+function plantUpdate(dt){
+  resizeSlots();
+  const n = P.nPos, F = F_(), E = E_();
+  if (Y.Y0) S.angle = mod(S.angle + (step()/0.9)*dt, 360);
+
+  crankMove('crankIn', Y.Y3, dt, () => {
+    const b = S.inConv[0];
+    if (!b || b.x < 0.98) return;
+    S.inConv.shift();
+    const k = slotAt(0);
+    if (k < 0 || S.slots[k]){ S.dropped++; log('SIM: botella cayó al ingresar (estrella desalineada u ocupada)', 'w'); return; }
+    S.slots[k] = b;
+  });
+  crankMove('crankOut', Y.Y1, dt, () => {
+    const k = slotAt(E);
+    if (k >= 0 && S.slots[k]){ S.outConv.push({x:0, fill:S.slots[k].fill}); S.slots[k] = null; }
+  });
+
+  if (Y.Y2){
+    const last = S.inConv[S.inConv.length-1];
+    S.dist += 0.22*dt;                               // distancia recorrida desde la última botella
+    if ((S.queue > 0 || S.continuous) && S.dist >= S.nextGap && (!last || last.x > 0.16)){
+      S.inConv.push({x:0, fill:0}); if (!S.continuous) S.queue--;
+      S.dist = 0;
+      // llegada aleatoria: mitad de las veces pegadas, si no, un hueco de 0,3 a 2 largos de botella-cinta
+      S.nextGap = S.randomGaps && Math.random() < 0.5 ? 0.3 + Math.random()*1.7 : 0.16;
+    }
+    let lim = 1;
+    for (const b of S.inConv){ b.x = Math.min(b.x + 0.22*dt, lim); lim = b.x - 0.13; }
+  }
+
+  if (Y.Y5 && Y.Y6 && S.tank > 0.01){
+    const q = 0.16*dt;
+    S.tank = Math.max(0, S.tank - q*0.07);
+    const k = slotAt(F), b = (k >= 0 && phase() < 0.12) ? S.slots[k] : null;
+    if (b){
+      b.fill += q;
+      if (b.fill > 1){ S.spill += b.fill - 1; b.fill = 1; }
+    } else {
+      S.spill += q;
+      if (!S.spillLogged){ log('SIM: ¡derrame! se dosifica sin botella', 'e'); S.spillLogged = true; }
+    }
+  }
+
+  if (S.autoTank && S.tank < 0.2) S.tank = 1;
+
+  if (Y.Y4){
+    for (const b of S.outConv) b.x += 0.25*dt;
+    S.outConv = S.outConv.filter(b => {
+      if (b.x <= 1) return true;
+      if (b.fill >= 0.85) S.ok++; else S.bad++;
+      return false;
+    });
+  }
+}
+function plantSensors(){
+  const ph = phase(), k = slotAt(F_()), b = (k >= 0 && ph < 0.12) ? S.slots[k] : null;
+  X.X0 = ph < 0.1;
+  X.X1 = S.crankOut < 15 || S.crankOut > 345;
+  X.X2 = !S.faultCap && !!b && b.fill >= 0.9;
+  X.X3 = !!b;
+  X.X4 = S.inConv.length > 0 && S.inConv[0].x >= 0.98;
+  X.X5 = S.crankIn < 15 || S.crankIn > 345;
+  X.X6 = S.tank >= 0.9;
+  X.X7 = S.tank >= 0.15;
+}
+
+/* ===================== Cliente Web API Factory I/O ===================== */
+const fio = { connected:false, base:'', outIds:{}, last:{}, lastFull:0, errs:0 };
+async function fetchT(url, opt={}, ms=1500){
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, {...opt, signal:ac.signal}); } finally { clearTimeout(t); }
+}
+function pick(tags, name, kind){
+  return tags.find(t => t.name === name && String(t.kind).toLowerCase() === kind) || tags.find(t => t.name === name);
+}
+async function fioConnect(){
+  fio.base = $('#url').value.trim().replace(/\/+$/, '');
+  store.set('url', fio.base);
+  try{
+    const r = await fetchT(fio.base + '/api/tags', {}, 3000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const tags = await r.json();
+    const missing = [];
+    IN.forEach(i => { if (!pick(tags, i.tag, 'input')) missing.push(`${i.k} "${i.tag}"`); });
+    fio.outIds = {};
+    OUT.forEach(o => { const t = pick(tags, o.tag, 'output'); if (t) fio.outIds[o.k] = t.id; else missing.push(`${o.k} "${o.tag}"`); });
+    fio.connected = true; fio.errs = 0; fio.last = {}; fio.lastFull = 0;
+    enter('IDLE'); plc.alarm = null; plc.run = false;
+    log(`Conectado a Factory I/O (${tags.length} tags en la escena)`, 'o');
+    if (missing.length) log('Tags no encontrados: ' + missing.join(', '), 'w');
+  }catch(e){
+    fio.connected = false;
+    log('No se pudo conectar: ' + (e.name === 'AbortError' ? 'tiempo agotado' : e.message) +
+        '. ¿Web server activo (app.web_server = True)? ¿Bloqueo CORS? → use proxy.js', 'e');
+  }
+  updateStatus();
+}
+async function fioDisconnect(){
+  OUT.forEach(o => Y[o.k] = false);
+  try { await fioWrite(true); } catch(e){}
+  fio.connected = false; enter('IDLE'); plc.run = false;
+  log('Desconectado de Factory I/O'); updateStatus();
+}
+async function fioRead(){
+  const r = await fetchT(fio.base + '/api/tags');
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const tags = await r.json();
+  IN.forEach(i => { const t = pick(tags, i.tag, 'input'); X[i.k] = t ? !!t.value : false; });
+}
+async function fioWrite(force=false){
+  const full = force || now() - fio.lastFull > 1000;
+  const body = OUT.filter(o => fio.outIds[o.k] && (full || fio.last[o.k] !== Y[o.k]))
+                  .map(o => ({id:fio.outIds[o.k], value:!!Y[o.k]}));
+  if (!body.length) return;
+  const r = await fetchT(fio.base + '/api/tag/values', {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  OUT.forEach(o => fio.last[o.k] = Y[o.k]);
+  if (full) fio.lastFull = now();
+}
+
+/* ===================== Mímico SVG ===================== */
+const VIS = { angle:0, crankIn:0, crankOut:0, beltIn:0, beltOut:0 };
+const C = {x:470, y:250}, RP = 95;
+function stPos(stFloat, r=RP){
+  const a = (180 + stFloat*step()) * Math.PI/180;
+  return {x:C.x + r*Math.cos(a), y:C.y + r*Math.sin(a)};
+}
+function bottle(x, y, fill, r=14){
+  const f = Math.max(0, Math.min(1, fill));
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="#e8f1f7" fill-opacity=".14" stroke="#cfe0ea" stroke-width="2"/>` +
+         (f > 0.02 ? `<circle cx="${x}" cy="${y}" r="${(r-3)*Math.sqrt(f)}" fill="var(--liq)" opacity=".9"/>` : '');
+}
+function sensor(x, y, k, label, anchor='middle', dy=-10){
+  return `<rect class="sens ${X[k]?'on':''}" x="${x-7}" y="${y-7}" width="14" height="14" rx="3"/>` +
+         `<text class="tagtxt ${X[k]?'on':''}" x="${x}" y="${y+dy}" text-anchor="${anchor}">${k}${label?' '+label:''}</text>`;
+}
+function act(x, y, k, label){
+  return `<text class="tagtxt ${Y[k]?'on':''}" x="${x}" y="${y}" text-anchor="middle">${k} ${label}</text>`;
+}
+function belt(x1, x2, y, off, on, k){
+  return `<rect x="${x1}" y="${y-20}" width="${x2-x1}" height="40" rx="20" fill="#232e36" stroke="${on?'var(--on)':'#3a4852'}" stroke-width="2"/>` +
+         `<line x1="${x1+18}" y1="${y}" x2="${x2-18}" y2="${y}" stroke="#3a4852" stroke-width="30" stroke-dasharray="4 14" stroke-dashoffset="${-off}"/>`;
+}
+function crankSvg(cx, cy, ang, on){
+  const a = ang*Math.PI/180, ex = cx + 16*Math.cos(a), ey = cy + 16*Math.sin(a);
+  return `<circle cx="${cx}" cy="${cy}" r="20" fill="#1c252c" stroke="${on?'var(--on)':'#3a4852'}" stroke-width="2"/>` +
+         `<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="#cfe0ea" stroke-width="4" stroke-linecap="round"/>` +
+         `<circle cx="${ex}" cy="${ey}" r="4" fill="#cfe0ea"/>`;
+}
+
+function render(dt){
+  const sim = $('#mode').value === 'sim';
+  // valores visuales
+  if (sim){ VIS.angle = S.angle; VIS.crankIn = S.crankIn; VIS.crankOut = S.crankOut; }
+  else {
+    if (Y.Y0) VIS.angle = mod(VIS.angle + (step()/0.9)*dt, 360);
+    if (Y.Y3) VIS.crankIn = mod(VIS.crankIn + 240*dt, 360); else if (X.X5) VIS.crankIn = 0;
+    if (Y.Y1) VIS.crankOut = mod(VIS.crankOut + 240*dt, 360); else if (X.X1) VIS.crankOut = 0;
+  }
+  if (Y.Y2) VIS.beltIn += 60*dt;
+  if (Y.Y4) VIS.beltOut += 60*dt;
+  const tank = sim ? S.tank : (X.X6 ? 0.95 : X.X7 ? 0.5 : 0.08);
+  const F = F_(), E = E_(), n = P.nPos, rot = VIS.angle / step();
+  const filling = Y.Y5 && Y.Y6;
+  let h = '';
+
+  // Cinta de entrada
+  h += belt(20, 345, 250, VIS.beltIn, Y.Y2);
+  h += `<text class="lbl" x="30" y="215">Cinta de entrada</text>` + act(180, 290, 'Y2', 'motor cinta');
+  // Cinta de salida
+  h += belt(600, 985, 345, VIS.beltOut, Y.Y4);
+  h += `<text class="lbl" x="820" y="312">Cinta de salida</text>` + act(800, 386, 'Y4', 'motor cinta');
+
+  // Estrella
+  h += `<circle cx="${C.x}" cy="${C.y}" r="122" fill="#1a2a35" fill-opacity=".7" stroke="${Y.Y0?'var(--on)':'#3a4852'}" stroke-width="2"/>`;
+  for (let k = 0; k < n; k++){
+    const p = stPos(k + rot);
+    h += `<line x1="${C.x}" y1="${C.y}" x2="${p.x}" y2="${p.y}" stroke="#2c3e4a" stroke-width="3"/>`;
+    h += `<circle cx="${p.x}" cy="${p.y}" r="17" fill="#0f1418" stroke="#2c3e4a" stroke-dasharray="3 3"/>`;
+  }
+  h += `<circle cx="${C.x}" cy="${C.y}" r="16" fill="#2c3e4a"/>`;
+  h += act(C.x, C.y + 140, 'Y0', 'motor plato');
+  // etiquetas de estación
+  [[0,'Ingreso'],[F,'Llenado'],[E,'Salida']].forEach(([s, t]) => {
+    const p = stPos(s, 55); h += `<text class="lbl" style="font-size:10.5px" x="${p.x}" y="${p.y+4}" text-anchor="middle">${t}</text>`;
+  });
+
+  // Botellas en estrella
+  if (sim){
+    S.slots.forEach((b, k) => { if (b){ const p = stPos(k + rot); h += bottle(p.x, p.y, b.fill); } });
+  } else if (X.X3){
+    const p = stPos(F); h += bottle(p.x, p.y, X.X2 ? 1 : (filling ? 0.5 : 0.05));
+  }
+  // Botellas en cintas
+  if (sim){
+    S.inConv.forEach(b => h += bottle(35 + b.x*300, 250, 0));
+    S.outConv.forEach(b => h += bottle(620 + b.x*350, 345, b.fill));
+  } else {
+    if (X.X4) h += bottle(335, 250, 0);
+  }
+
+  // Bielas
+  h += crankSvg(330, 320, VIS.crankIn, Y.Y3) + act(330, 362, 'Y3', 'biela ingreso');
+  h += sensor(372, 318, 'X5', '', 'start', 4).replace('text-anchor="start"', 'text-anchor="start" dx="12"');
+  h += crankSvg(565, 400, VIS.crankOut, Y.Y1) + act(565, 434, 'Y1', 'biela salida');
+  h += sensor(607, 397, 'X1', '', 'start', 4).replace('text-anchor="start"', 'text-anchor="start" dx="12"');
+
+  // Sensores de estrella / entrada
+  h += sensor(605, 250, 'X0', 'posición', 'start', 4).replace('text-anchor="start"', 'text-anchor="start" dx="12"');
+  const pf = stPos(F);
+  h += sensor(pf.x + 34, pf.y + 4, 'X3', 'LS llenado', 'start', 4).replace('text-anchor="start"', 'text-anchor="start" dx="12"');
+  h += sensor(pf.x - 34, pf.y + 4, 'X2', 'capacitivo', 'end', 4).replace('text-anchor="end"', 'text-anchor="end" dx="-12"');
+  h += sensor(345, 214, 'X4', 'LS entrada');
+
+  // Tubería, bomba, válvula, boquilla
+  const pipe = filling ? 'var(--liq)' : '#3a4852';
+  h += `<path d="M760 185 H714 M686 185 H640 V97 M640 73 V60 H${pf.x} V${pf.y-26}" fill="none" stroke="${pipe}" stroke-width="6"/>`;
+  h += `<circle cx="700" cy="185" r="14" fill="#1c252c" stroke="${Y.Y5?'var(--on)':'#3a4852'}" stroke-width="3"/>` +
+       `<path d="M694 177 L710 185 L694 193 Z" fill="${Y.Y5?'var(--on)':'#55646f'}"/>` + act(700, 220, 'Y5', 'bomba');
+  h += `<path d="M630 75 L650 95 L650 75 L630 95 Z" fill="${Y.Y6?'var(--on)':'#55646f'}" stroke="#0008"/>` + act(692, 89, 'Y6', 'válvula');
+  h += `<rect x="${pf.x-8}" y="${pf.y-30}" width="16" height="10" fill="#55646f"/>`;
+  if (filling) h += `<line x1="${pf.x}" y1="${pf.y-20}" x2="${pf.x}" y2="${pf.y-4}" stroke="var(--liq)" stroke-width="4" stroke-dasharray="3 3" stroke-dashoffset="${-VIS.beltIn}"/>`;
+
+  // Estanque
+  const tx = 760, ty = 30, tw = 90, th = 170, lh = th * tank;
+  h += `<rect x="${tx}" y="${ty+th-lh}" width="${tw}" height="${lh}" fill="var(--liq)" opacity=".55"/>`;
+  h += `<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" fill="none" stroke="#9fb3c0" stroke-width="2" rx="3"/>`;
+  h += `<text class="lbl" x="${tx+tw/2}" y="${ty-8}" text-anchor="middle">Estanque ${sim ? Math.round(tank*100)+'%' : ''}</text>`;
+  h += sensor(tx+tw+12, ty+th*0.1, 'X6', 'máx', 'start', 4).replace('text-anchor="start"', 'text-anchor="start" dx="12"');
+  h += sensor(tx+tw+12, ty+th*0.85, 'X7', 'mín', 'start', 4).replace('text-anchor="start"', 'text-anchor="start" dx="12"');
+
+  $('#mimic').innerHTML = h;
+}
+
+/* ===================== UI ===================== */
+function buildTables(){
+  $('#tIn').innerHTML = IN.map(i => `<tr><td><span class="led" id="led-${i.k}"></span></td><td class="k">${i.k}</td><td class="d">${i.d}</td></tr>`).join('');
+  $('#tOut').innerHTML = OUT.map(o => `<tr class="click" data-k="${o.k}"><td><span class="led" id="led-${o.k}"></span></td><td class="k">${o.k}</td><td class="d">${o.d}</td></tr>`).join('');
+  $('#tOut').onclick = e => {
+    const tr = e.target.closest('tr'); if (!tr) return;
+    if (!$('#manual').checked || plc.step !== 'IDLE'){ log('Active "Modo manual" con la máquina detenida para forzar salidas', 'w'); return; }
+    manualOut[tr.dataset.k] = !manualOut[tr.dataset.k];
+  };
+  $('#tMap').innerHTML = [...IN, ...OUT].map(t => `<tr><td class="k">${t.k}</td><td><input data-k="${t.k}" value="${t.tag.replace(/"/g,'&quot;')}"></td></tr>`).join('');
+  $('#params').innerHTML = Object.keys(P).map(k => `<label for="p-${k}">${P_TXT[k]}</label><input type="number" id="p-${k}" data-k="${k}" value="${P[k]}" min="1" step="${k.startsWith('t')?'0.5':'1'}">`).join('');
+  $('#params').onchange = e => {
+    const k = e.target.dataset.k; if (!k) return;
+    const v = parseFloat(e.target.value); if (!(v > 0)) return;
+    P[k] = k.startsWith('t') ? v : Math.round(v);
+    store.set('params', P); resizeSlots();
+  };
+}
+function updateUI(){
+  IN.forEach(i => $('#led-'+i.k).classList.toggle('on', !!X[i.k]));
+  OUT.forEach(o => $('#led-'+o.k).classList.toggle('on', !!Y[o.k]));
+  const st = $('#step');
+  let txt = plc.step === 'ALARM' ? 'ALARMA: ' + plc.alarm : STEP_TXT[plc.step] + (plc.stopReq ? ' (vaciando para parar)' : '');
+  const T = plc.T || {};
+  if (plc.step === 'STATION' && T.started){
+    const f = (done, res, busy) => done ? (res || '—') : busy;
+    txt += `<br><small style="font-weight:400;color:var(--mut)">Ingreso: ${f(T.inDone, T.inRes, T.in ? 'biela…' : 'esperando botella…')} · ` +
+           `Dosif.: ${f(T.fillDone, T.fillRes || 'sin botella', 'llenando…')} · Salida: ${f(T.outDone, T.outRes || 'vacía', 'biela…')}</small>`;
+  }
+  st.innerHTML = txt;
+  st.classList.toggle('alarm', plc.step === 'ALARM');
+  { const act = activeStages(); [...$('#stages').children].forEach((d, i) => d.classList.toggle('act', act.includes(i))); }
+  $('#warn').textContent = plc.warn;
+  const sim = $('#mode').value === 'sim';
+  const items = [
+    ['Despachadas', plc.cycles], ['En la estrella', plc.reg.filter(Boolean).length], ['Bolsillos vacíos (sin botella)', plc.holes], ['Llenas por sensor X2', plc.okFill],
+    ['Cortadas por tiempo', plc.toFill], ['Expulsadas en verificación', plc.purged],
+  ];
+  if (sim) items.push(['Entregadas OK (sim)', S.ok], ['Mal llenadas (sim)', S.bad], ['Botellas por entrar', S.continuous ? '∞' : S.queue + S.inConv.length], ['Derrame (sim)', S.spill.toFixed(2)]);
+  $('#stats').innerHTML = items.map(([t, v]) => `<div class="stat"><b>${v}</b><span>${t}</span></div>`).join('');
+}
+function updateStatus(){
+  const s = $('#status'), sim = $('#mode').value === 'sim';
+  $('#url').style.display = $('#btnConn').style.display = sim ? 'none' : '';
+  $('#simCard').style.display = sim ? '' : 'none';
+  if (sim){ s.className = 'pill sim'; s.textContent = 'SIMULACIÓN'; }
+  else if (fio.connected){ s.className = 'pill ok'; s.textContent = 'CONECTADO'; $('#btnConn').textContent = 'Desconectar'; }
+  else { s.className = 'pill bad'; s.textContent = 'SIN CONEXIÓN'; $('#btnConn').textContent = 'Conectar'; }
+}
+
+/* ===================== Bucle principal ===================== */
+let lastT = now();
+async function tick(){
+  const t = now(), dt = Math.min(0.2, (t - lastT)/1000); lastT = t;
+  const mode = $('#mode').value;
+  if (mode === 'sim'){
+    plantUpdate(dt); plantSensors(); scan(dt);
+  } else if (fio.connected){
+    try{
+      await fioRead(); scan(dt); await fioWrite(); fio.errs = 0;
+    }catch(e){
+      if (++fio.errs >= 3){
+        fio.connected = false; alarm('Comunicación perdida con Factory I/O (' + e.message + ')'); updateStatus();
+      }
+    }
+  }
+  render(dt); updateUI();
+  setTimeout(tick, Math.max(0, (mode === 'sim' ? 40 : 50) - (now() - t)));
+}
+
+/* ===================== Eventos ===================== */
+$('#url').value = store.get('url', location.port === '8080' ? location.origin : 'http://localhost:7410');
+$('#mode').value = store.get('mode', 'sim');
+$('#mode').onchange = async () => {
+  if (fio.connected) await fioDisconnect();
+  OUT.forEach(o => Y[o.k] = false);
+  enter('IDLE'); plc.run = false; plc.alarm = null;
+  store.set('mode', $('#mode').value); updateStatus();
+  log('Modo: ' + ($('#mode').value === 'sim' ? 'simulación local' : 'Factory I/O'));
+};
+$('#btnConn').onclick = () => fio.connected ? fioDisconnect() : fioConnect();
+$('#bStart').onclick = cmdStart; $('#bStop').onclick = cmdStop;
+$('#bReset').onclick = cmdReset; $('#bEm').onclick = cmdEm;
+$('#bSaveMap').onclick = () => {
+  const m = {};
+  document.querySelectorAll('#tMap input').forEach(inp => {
+    const t = [...IN, ...OUT].find(x => x.k === inp.dataset.k); t.tag = inp.value.trim(); m[t.k] = t.tag;
+  });
+  store.set('map', m); log('Mapeo de tags guardado' + (fio.connected ? ' — reconecte para aplicarlo' : ''), 'o');
+};
+$('#tAddStar').onclick = () => {
+  resizeSlots();
+  const free = S.slots.map((b, i) => b ? -1 : i).filter(i => i >= 0);
+  if (!free.length) return;
+  S.slots[free[Math.floor(Math.random()*free.length)]] = {fill: Math.random() < .5 ? 0 : 0.6};
+  log('SIM: se dejó una botella en la estrella (la verificación debe expulsarla)');
+};
+$('#tRefill').onclick = () => { S.tank = 1; log('SIM: estanque rellenado'); };
+$('#tBottles').onclick = () => { S.queue += 8; log('SIM: +8 botellas en cinta de entrada'); };
+$('#tCont').onchange = e => { S.continuous = e.target.checked; log('SIM: alimentación ' + (S.continuous ? 'continua' : 'limitada (cola de botellas)')); };
+$('#tGaps').onchange = e => { S.randomGaps = e.target.checked; S.nextGap = 0.16; log('SIM: llegada ' + (S.randomGaps ? 'al azar' : 'continua, una tras otra')); };
+$('#tAutoTank').onchange = e => { S.autoTank = e.target.checked; };
+$('#tCap').onchange = e => { S.faultCap = e.target.checked; log('SIM: falla de sensor capacitivo ' + (S.faultCap ? 'ACTIVADA' : 'desactivada'), 'w'); };
+
+buildTables(); updateStatus();
+log('HMI lista. En simulación presione INICIO para probar la secuencia.');
+tick();
+</script>
+</body>
+</html>
